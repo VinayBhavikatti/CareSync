@@ -18,13 +18,13 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center rounded-xl font-semibold transition-colors duration-150 focus-visible:ring-4 focus-visible:ring-kindred-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center rounded-xl font-semibold transition-colors duration-150 focus-visible:ring-4 focus-visible:ring-caresync-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed';
 
   const variants = {
-    primary: 'bg-kindred-600 text-white hover:bg-kindred-700 active:bg-kindred-800',
+    primary: 'bg-caresync-600 text-white hover:bg-caresync-700 active:bg-caresync-800',
     secondary:
       'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600',
-    ghost: 'text-kindred-600 dark:text-kindred-400 hover:bg-kindred-50 dark:hover:bg-kindred-900/20',
+    ghost: 'text-caresync-600 dark:text-caresync-400 hover:bg-caresync-50 dark:hover:bg-caresync-900/20',
     danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
   };
 

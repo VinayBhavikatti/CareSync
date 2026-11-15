@@ -7,6 +7,7 @@ import { AuditActor } from '@prisma/client';
 
 const router = Router();
 const prisma = new PrismaClient();
+const languageSchema = z.object({ language: z.enum(['ENGLISH', 'HINDI', 'KANNADA']) });
 
 const createProfileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.').max(100),
@@ -106,6 +107,20 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
       : { id: profile.id, name: profile.name, timezone: profile.timezone, createdAt: profile.createdAt };
 
   res.json({ ...responseData, role });
+});
+
+router.get('/me/language', authenticate, async (req: Request, res: Response) => {
+  const profile = await prisma.careProfile.findUnique({ where: { id: req.user!.profileId }, select: { language: true } as any });
+  if (!profile) return res.status(404).json({ error: 'Profile not found.' });
+  return res.json({ language: (profile as any).language ?? 'ENGLISH' });
+});
+
+router.patch('/me/language', authenticate, async (req: Request, res: Response) => {
+  if (req.user!.role !== 'ELDER') return res.status(403).json({ error: 'Only the elder can change reminder language.' });
+  const parsed = languageSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose English, Hindi, or Kannada.' });
+  await prisma.careProfile.update({ where: { id: req.user!.profileId }, data: { language: parsed.data.language } as any });
+  return res.json({ language: parsed.data.language });
 });
 
 export default router;

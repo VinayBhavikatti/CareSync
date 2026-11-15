@@ -65,6 +65,7 @@ router.post('/login', async (req: Request, res: Response) => {
     role,
     profileId,
     elderName: profile.name,
+    timezone: profile.timezone,
   });
 });
 
@@ -85,7 +86,7 @@ router.post('/verify', async (req: Request, res: Response) => {
     // Also confirm the profile still exists
     const profile = await prisma.careProfile.findUnique({
       where: { id: payload.profileId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, timezone: true },
     });
 
     if (!profile) {
@@ -93,7 +94,7 @@ router.post('/verify', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ valid: true, profileId: payload.profileId, role: payload.role, elderName: profile.name });
+    res.json({ valid: true, profileId: payload.profileId, role: payload.role, elderName: profile.name, timezone: profile.timezone });
   } catch {
     res.status(401).json({ valid: false });
   }

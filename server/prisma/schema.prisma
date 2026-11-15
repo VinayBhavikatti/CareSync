@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -16,6 +16,12 @@ enum Role {
   ELDER
   CARETAKER
   FAMILY
+}
+
+enum ProfileLanguage {
+  ENGLISH
+  HINDI
+  KANNADA
 }
 
 enum MedicationStatus {
@@ -53,6 +59,7 @@ enum AuditActor {
 enum EmailStatus {
   SENT
   FAILED
+  SIMULATED
 }
 
 enum EmailReminderType {
@@ -63,6 +70,7 @@ enum EmailReminderType {
   APPOINTMENT_DAY_BEFORE
   APPOINTMENT_TWO_HOUR
   PROPOSAL_NEEDS_APPROVAL
+  REFILL_WARNING
 }
 
 // ─── Models ───────────────────────────────────────────────────────────────────
@@ -73,10 +81,11 @@ model CareProfile {
   elderPasscodeHash     String
   caretakerPasscodeHash String
   familyPasscodeHash    String
-  elderEmail            String?
-  caretakerEmail        String?
-  familyEmail           String?
+  elderEmail            String?  @db.VarChar(254)
+  caretakerEmail        String?  @db.VarChar(254)
+  familyEmail           String?  @db.VarChar(254)
   timezone              String   @default("Asia/Kolkata")
+  language              ProfileLanguage @default(ENGLISH)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -89,14 +98,21 @@ model CareProfile {
   emailLogs         EmailLog[]
 }
 
+model AICallUsage {
+  day       String   @id
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 model Medication {
   id           String           @id @default(uuid())
   profileId    String
   name         String
   dosage       String
-  instructions String?
-  times        String[]         // e.g. ["08:00", "20:00"] in 24h local time
+  instructions String?          @db.VarChar(255)
+  times        Json             // JSON array of 24-hour local times, e.g. ["08:00", "20:00"]
   stockCount   Int
+  refillCycle  Int              @default(0)
   pillsPerDose Int              @default(1)
   status       MedicationStatus @default(ACTIVE)
   proposedBy   Role             @default(ELDER)
@@ -132,7 +148,7 @@ model DoseLog {
   status           DoseStatus @default(PENDING)
   loggedAt         DateTime?
   loggedBy         Role?
-  note             String?
+  note             String?    @db.VarChar(255)
   reminderSentAt   DateTime?
   escalationSentAt DateTime?
 
@@ -147,7 +163,7 @@ model Appointment {
   doctorName            String?
   location              String?
   scheduledAt           DateTime
-  notes                 String?
+  notes                 String?           @db.Text
   status                AppointmentStatus @default(UPCOMING)
   dayBeforeReminderSent Boolean           @default(false)
   twoHourReminderSent   Boolean           @default(false)
@@ -189,11 +205,11 @@ model EmailLog {
   entityId     String
   entityType   String
   reminderType EmailReminderType
-  recipient    String
+  recipient    String            @db.VarChar(254)
   subject      String
-  body         String
+  body         String            @db.Text
   status       EmailStatus
-  error        String?
+  error        String?           @db.Text
   retryCount   Int               @default(0)
   sentAt       DateTime          @default(now())
 

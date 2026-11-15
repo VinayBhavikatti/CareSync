@@ -23,6 +23,7 @@ export async function createAuditEntry(params: LogAuditParams) {
         entityId: params.entityId,
         before: params.before ? JSON.parse(JSON.stringify(params.before)) : undefined,
         after: params.after ? JSON.parse(JSON.stringify(params.after)) : undefined,
+        createdAt: new Date(),
       },
     });
   } catch (err) {

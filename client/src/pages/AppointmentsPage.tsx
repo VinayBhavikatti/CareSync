@@ -1,28 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { CalendarDays, MapPin, Pencil, Plus, Stethoscope, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import {
-  appointmentsApi,
-  type Appointment,
-  type AppointmentStatus,
-} from '../api/appointments';
+import { appointmentsApi, type Appointment, type AppointmentStatus } from '../api/appointments';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
-
-function formatApptDate(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatApptTime(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-}
+import { addDateKeyDays, formatInTimeZone, localDateInput, localDateTimeToIso, localTimeInput } from '../utils/timezone';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/EmptyState';
+import { CardSkeleton } from '../components/Skeleton';
+import { Badge } from '../components/StatusChip';
+import { Modal } from '../components/Modal';
 
 export function AppointmentsPage() {
   const { user } = useAuth();
@@ -31,353 +19,83 @@ export function AppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-
-  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
-  const [formData, setFormData] = useState({
-    title: '',
-    doctorName: '',
-    location: '',
-    date: '',
-    time: '10:00',
-    notes: '',
-    status: 'UPCOMING' as AppointmentStatus,
-  });
   const [modalLoading, setModalLoading] = useState(false);
+  const [formData, setFormData] = useState({ title: '', doctorName: '', location: '', date: '', time: '10:00', notes: '', status: 'UPCOMING' as AppointmentStatus });
 
   const fetchAppts = useCallback(async () => {
     if (!user) return;
-    try {
-      setError('');
-      const data = await appointmentsApi.getAll(user.token);
-      setAppointments(data.appointments);
-      setCanEdit(data.canEdit);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load appointments.');
-    } finally {
-      setLoading(false);
-    }
+    try { setError(''); const data = await appointmentsApi.getAll(user.token); setAppointments(data.appointments); setCanEdit(data.canEdit); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Failed to load appointments.'); }
+    finally { setLoading(false); }
   }, [user]);
+  useEffect(() => { void fetchAppts(); }, [fetchAppts]);
 
-  useEffect(() => {
-    fetchAppts();
-  }, [fetchAppts]);
-
-  const showSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(''), 4000);
-  };
-
+  const showSuccess = (message: string) => { setSuccessMsg(message); window.setTimeout(() => setSuccessMsg(''), 4000); };
   const handleOpenAdd = () => {
     setEditingAppt(null);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setFormData({
-      title: '',
-      doctorName: '',
-      location: '',
-      date: tomorrow.toISOString().split('T')[0],
-      time: '10:00',
-      notes: '',
-      status: 'UPCOMING',
-    });
+    setFormData({ title: '', doctorName: '', location: '', date: addDateKeyDays(localDateInput(new Date().toISOString(), user?.timezone), 1), time: '10:00', notes: '', status: 'UPCOMING' });
     setIsModalOpen(true);
   };
-
   const handleOpenEdit = (appt: Appointment) => {
     setEditingAppt(appt);
-    const d = new Date(appt.scheduledAt);
-    setFormData({
-      title: appt.title,
-      doctorName: appt.doctorName ?? '',
-      location: appt.location ?? '',
-      date: d.toISOString().split('T')[0],
-      time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-      notes: appt.notes ?? '',
-      status: appt.status,
-    });
+    setFormData({ title: appt.title, doctorName: appt.doctorName ?? '', location: appt.location ?? '', date: localDateInput(appt.scheduledAt, user?.timezone), time: localTimeInput(appt.scheduledAt, user?.timezone), notes: appt.notes ?? '', status: appt.status });
     setIsModalOpen(true);
   };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    setModalLoading(true);
-    setError('');
-
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!user) return;
+    setModalLoading(true); setError('');
     try {
-      const scheduledAt = new Date(`${formData.date}T${formData.time}:00.000Z`).toISOString();
-      const payload = {
-        title: formData.title,
-        doctorName: formData.doctorName || null,
-        location: formData.location || null,
-        scheduledAt,
-        notes: formData.notes || null,
-        status: formData.status,
-      };
-
-      if (editingAppt) {
-        const res = await appointmentsApi.update(user.token, editingAppt.id, payload);
-        showSuccess(res.message);
-      } else {
-        const res = await appointmentsApi.create(user.token, payload);
-        showSuccess(res.message);
-      }
-
-      setIsModalOpen(false);
-      fetchAppts();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save appointment.');
-    } finally {
-      setModalLoading(false);
-    }
+      const payload = { title: formData.title, doctorName: formData.doctorName || null, location: formData.location || null, scheduledAt: localDateTimeToIso(formData.date, formData.time, user.timezone), notes: formData.notes || null, status: formData.status };
+      const result = editingAppt ? await appointmentsApi.update(user.token, editingAppt.id, payload) : await appointmentsApi.create(user.token, payload);
+      showSuccess(result.message); setIsModalOpen(false); void fetchAppts();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to save appointment.'); }
+    finally { setModalLoading(false); }
   };
-
   const handleDelete = async (id: string) => {
     if (!user || !window.confirm('Are you sure you want to delete this appointment?')) return;
-    try {
-      const res = await appointmentsApi.delete(user.token, id);
-      showSuccess(res.message);
-      fetchAppts();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete appointment.');
-    }
+    try { const result = await appointmentsApi.delete(user.token, id); showSuccess(result.message); void fetchAppts(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Failed to delete appointment.'); }
   };
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+  return <div className="flex flex-col gap-6">
+    <PageHeader title="Appointments" description="Keep upcoming checkups and visits easy to find." action={canEdit && <Button size="lg" onClick={handleOpenAdd}><Plus size={21} aria-hidden="true" /> Add appointment</Button>} />
+    <section className="card page-hero" aria-label="Appointment overview"><h2 className="text-2xl font-bold">Care visits, all in one place</h2><p className="mt-1 text-lg text-muted">Keep the next visit and care team details close at hand.</p><div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3"><div className="rounded-xl surface-subtle p-4"><span className="text-lg text-muted">Upcoming visits</span><strong className="mt-1 block text-2xl">{appointments.filter((item) => item.status === 'UPCOMING' && new Date(item.scheduledAt).getTime() >= Date.now()).length}</strong></div><div className="rounded-xl surface-subtle p-4"><span className="text-lg text-muted">Next visit</span><strong className="mt-1 block truncate text-2xl">{appointments.filter((item) => item.status === 'UPCOMING' && new Date(item.scheduledAt).getTime() >= Date.now()).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]?.title ?? 'None scheduled'}</strong></div><div className="rounded-xl surface-subtle p-4"><span className="text-lg text-muted">Care profile</span><strong className="mt-1 block truncate text-2xl">{user?.elderName ?? 'Shared care'}</strong></div></div></section>
+    {successMsg && <div className="success-box" role="status">{successMsg}</div>}
+    {error && <div className="error-box flex flex-wrap items-center justify-between gap-3" role="alert"><span>{error}</span><Button variant="secondary" onClick={() => void fetchAppts()}>Try again</Button></div>}
+    {user?.role === 'FAMILY' && <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-lg text-blue-950 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100">Appointments are read-only for family members.</div>}
+    {loading ? <div className="grid gap-4" role="status" aria-label="Loading appointments"><CardSkeleton /><CardSkeleton /></div> : error && appointments.length === 0 ? <EmptyState title="Appointments could not be loaded" description="Check your connection, then try again." action={<Button onClick={() => void fetchAppts()}>Try again</Button>} /> : appointments.length === 0 ? <EmptyState title="No appointments yet" description="Add an upcoming visit so everyone in the care profile can find the details." icon={<CalendarDays size={36} />} action={canEdit ? <Button onClick={handleOpenAdd}><Plus size={20} aria-hidden="true" /> Add appointment</Button> : undefined} /> : <div className="grid gap-4 xl:grid-cols-2">
+      {appointments.map((appt) => <Card key={appt.id} className="flex flex-col justify-between">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
-            Doctor Appointments
-          </h1>
-          <p className="text-xl text-gray-500 dark:text-gray-400 mt-1">
-            Checkups, routine visits, and consultations
-          </p>
-        </div>
-
-        {canEdit && (
-          <Button onClick={handleOpenAdd} size="lg" className="shrink-0 gap-2 font-bold">
-            <span className="text-2xl">+</span> Add Appointment
-          </Button>
-        )}
-      </div>
-
-      {/* Messages */}
-      {successMsg && (
-        <div className="success-box" role="status">
-          <strong>✅ </strong>{successMsg}
-        </div>
-      )}
-      {error && (
-        <div className="error-box" role="alert">
-          <strong>⚠️ </strong>{error}
-        </div>
-      )}
-
-      {/* Family Notice */}
-      {user?.role === 'FAMILY' && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded-xl p-4 text-blue-800 dark:text-blue-200 text-lg flex items-center gap-3">
-          <span className="text-2xl">👨‍👩‍👧</span>
-          <span>You are viewing appointments in read-only mode.</span>
-        </div>
-      )}
-
-      {/* List */}
-      {loading ? (
-        <div className="text-center py-12 text-xl text-gray-500">Loading appointments…</div>
-      ) : appointments.length === 0 ? (
-        <Card className="text-center py-12">
-          <span className="text-6xl block mb-3">📅</span>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">No appointments scheduled</h2>
-          <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">
-            Add upcoming doctor appointments to track checkups and consultation visits.
-          </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {appointments.map((appt) => {
-            const isCompleted = appt.status === 'COMPLETED';
-            const isCancelled = appt.status === 'CANCELLED';
-
-            return (
-              <div
-                key={appt.id}
-                className={`
-                  p-6 rounded-2xl border-2 transition-all shadow-sm
-                  ${isCompleted
-                    ? 'bg-gray-50 dark:bg-gray-800/40 border-gray-300 dark:border-gray-700 opacity-80'
-                    : isCancelled
-                    ? 'bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800 opacity-70'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                  }
-                `}
-              >
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <span className="text-xl md:text-2xl font-extrabold text-kindred-600 dark:text-kindred-400">
-                        🗓️ {formatApptDate(appt.scheduledAt)} at {formatApptTime(appt.scheduledAt)}
-                      </span>
-
-                      <span
-                        className={`px-3 py-1 rounded-full text-base font-bold ${
-                          isCompleted
-                            ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                            : isCancelled
-                            ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                            : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                        }`}
-                      >
-                        {appt.status}
-                      </span>
-                    </div>
-
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {appt.title}
-                    </h2>
-
-                    {appt.doctorName && (
-                      <p className="text-lg font-medium text-gray-700 dark:text-gray-200 mt-1">
-                        👨‍⚕️ <strong>Doctor:</strong> {appt.doctorName}
-                      </p>
-                    )}
-
-                    {appt.location && (
-                      <p className="text-lg text-gray-600 dark:text-gray-300 mt-0.5">
-                        📍 <strong>Location:</strong> {appt.location}
-                      </p>
-                    )}
-
-                    {appt.notes && (
-                      <p className="text-base text-gray-500 dark:text-gray-400 mt-2 italic bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
-                        📝 “{appt.notes}”
-                      </p>
-                    )}
-                  </div>
-
-                  {canEdit && (
-                    <div className="flex items-center gap-3 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(appt)}
-                        className="min-h-[48px] px-4 py-2 rounded-xl text-lg font-semibold bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-200 transition-colors"
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(appt.id)}
-                        className="min-h-[48px] px-4 py-2 rounded-xl text-lg font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 md:p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200 dark:border-gray-700">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-              {editingAppt ? 'Edit Appointment' : 'Add Appointment'}
-            </h2>
-
-            <form onSubmit={handleSave} className="flex flex-col gap-4">
-              <Input
-                label="Appointment Title"
-                placeholder="e.g., Cardiology Check-up"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-              />
-
-              <Input
-                label="Doctor Name"
-                placeholder="e.g., Dr. Priya Sharma"
-                value={formData.doctorName}
-                onChange={(e) => setFormData({ ...formData, doctorName: e.target.value })}
-              />
-
-              <Input
-                label="Hospital / Clinic Location"
-                placeholder="e.g., Apollo Hospital, Bangalore Room 304"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  required
-                />
-                <Input
-                  label="Time"
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  required
-                />
-              </div>
-
-              {editingAppt && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                    Status
-                  </label>
-                  <select
-                    className="input-field"
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as AppointmentStatus })}
-                  >
-                    <option value="UPCOMING">Upcoming</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
-                </div>
-              )}
-
-              <Input
-                label="Notes / Instructions"
-                placeholder="e.g., Fasting required for blood work."
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              />
-
-              <div className="flex items-center justify-end gap-3 mt-6">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={modalLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" isLoading={modalLoading}>
-                  {editingAppt ? 'Save Changes' : 'Schedule Visit'}
-                </Button>
-              </div>
-            </form>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-2 text-lg font-semibold text-caresync-900 dark:text-caresync-100"><CalendarDays size={21} aria-hidden="true" />{formatInTimeZone(appt.scheduledAt, user?.timezone, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {formatInTimeZone(appt.scheduledAt, user?.timezone, { hour: 'numeric', minute: '2-digit', hour12: true })}</p>
+            <Badge className={appt.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100' : appt.status === 'CANCELLED' ? 'bg-slate-200 text-slate-950 dark:bg-slate-700 dark:text-slate-100' : 'bg-blue-100 text-blue-950 dark:bg-blue-950 dark:text-blue-100'}>{appt.status}</Badge>
           </div>
+          <h2 className="text-2xl font-bold">{appt.title}</h2>
+          {appt.doctorName && <p className="mt-2 flex items-center gap-2 text-lg"><Stethoscope size={20} aria-hidden="true" /><strong>Doctor:</strong> {appt.doctorName}</p>}
+          {appt.location && <p className="mt-2 flex items-start gap-2 text-lg"><MapPin size={20} aria-hidden="true" /><span><strong>Location:</strong> {appt.location}</span></p>}
+          {appt.notes && <p className="mt-3 rounded-xl surface-subtle p-3 text-lg leading-relaxed">{appt.notes}</p>}
         </div>
-      )}
-    </div>
-  );
+        {canEdit && <div className="mt-5 flex gap-3 border-t border-token pt-4">
+          <Button variant="secondary" className="flex-1" onClick={() => handleOpenEdit(appt)}><Pencil size={20} aria-hidden="true" /> Edit</Button>
+          <Button variant="ghost" onClick={() => void handleDelete(appt.id)} aria-label={`Delete ${appt.title}`}><Trash2 size={20} aria-hidden="true" /> Delete</Button>
+        </div>}
+      </Card>)}
+    </div>}
+    {isModalOpen && <Modal title={editingAppt ? 'Edit appointment' : 'Add appointment'} onClose={() => { if (!modalLoading) setIsModalOpen(false); }}>
+      <form onSubmit={handleSave} className="flex flex-col gap-4">
+        <Input label="Appointment title" placeholder="e.g., Cardiology check-up" value={formData.title} onChange={(event) => setFormData({ ...formData, title: event.target.value })} required />
+        <Input label="Doctor name" placeholder="e.g., Dr. Priya Sharma" value={formData.doctorName} onChange={(event) => setFormData({ ...formData, doctorName: event.target.value })} />
+        <Input label="Hospital or clinic" value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input label="Date" type="date" value={formData.date} onChange={(event) => setFormData({ ...formData, date: event.target.value })} required />
+          <Input label="Time" type="time" value={formData.time} onChange={(event) => setFormData({ ...formData, time: event.target.value })} required />
+        </div>
+        {editingAppt && <label className="flex flex-col gap-2 text-lg font-semibold">Status<select className="input-field" value={formData.status} onChange={(event) => setFormData({ ...formData, status: event.target.value as AppointmentStatus })}><option value="UPCOMING">Upcoming</option><option value="COMPLETED">Completed</option><option value="CANCELLED">Cancelled</option></select></label>}
+        <Input label="Notes" value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} />
+        <div className="mt-3 flex justify-end gap-3"><Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={modalLoading}>Cancel</Button><Button type="submit" isLoading={modalLoading}>{editingAppt ? 'Save changes' : 'Schedule visit'}</Button></div>
+      </form>
+    </Modal>}
+  </div>;
 }
-

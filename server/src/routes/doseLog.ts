@@ -6,6 +6,8 @@ import { createAuditEntry } from '../services/auditService.js';
 import { ensureTodayDosesForProfile } from '../services/doseGenerator.js';
 import { getCurrentTime } from '../utils/clock.js';
 import { sendAllClearEmailsIfEligible } from '../services/reminderScheduler.js';
+import { decodeMedicationTimes } from '../utils/medicationTimes.js';
+import { localDateKey } from '../utils/timezone.js';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -24,7 +26,7 @@ router.get('/today', async (req: Request, res: Response) => {
   });
 
   const tz = profile?.timezone || 'Asia/Kolkata';
-  const dateStr = now.toLocaleDateString('en-CA', { timeZone: tz });
+  const dateStr = localDateKey(now, tz);
 
   const todayDoses = await ensureTodayDosesForProfile(profileId, now);
 
@@ -154,7 +156,7 @@ router.post('/:id/status', requireRole(Role.ELDER, Role.CARETAKER), async (req: 
   }
 
   res.json({
-    dose: updatedDose,
+    dose: { ...updatedDose, medication: { ...updatedDose.medication, times: decodeMedicationTimes(updatedDose.medication.times) } },
     remainingStock: updatedMed ? Math.max(0, updatedMed.stockCount) : dose.medication.stockCount,
     message: newStatus === 'TAKEN' ? 'Dose marked as taken! Well done.' : 'Dose marked as skipped.',
   });

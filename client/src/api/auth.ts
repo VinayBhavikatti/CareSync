@@ -6,6 +6,7 @@ export interface LoginResponse {
   role: Role;
   profileId: string;
   elderName: string;
+  timezone: string;
 }
 
 export interface CreateProfilePayload {
@@ -33,7 +34,7 @@ export const authApi = {
     }),
 
   verify: (token: string) =>
-    apiFetch<{ valid: boolean; profileId?: string; role?: Role; elderName?: string }>(
+    apiFetch<{ valid: boolean; profileId?: string; role?: Role; elderName?: string; timezone?: string }>(
       '/api/auth/verify',
       { method: 'POST', token },
     ),

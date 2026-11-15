@@ -1,4 +1,6 @@
 import { PrismaClient, DoseStatus, MedicationStatus } from '@prisma/client';
+import { decodeMedicationTimes } from '../utils/medicationTimes.js';
+import { endOfLocalDayUtc, localDateKey, localDateTimeToUtc, startOfLocalDayUtc } from '../utils/timezone.js';
 
 const prisma = new PrismaClient();
 
@@ -15,11 +17,11 @@ export async function ensureTodayDosesForProfile(profileId: string, referenceTim
   const tz = profile?.timezone || 'Asia/Kolkata';
 
   // Format today's date in user's timezone (YYYY-MM-DD)
-  const dateStr = referenceTime.toLocaleDateString('en-CA', { timeZone: tz });
+  const dateStr = localDateKey(referenceTime, tz);
 
-  // Define start and end of "today" in local time mapped to UTC
-  const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
-  const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
+  // Prisma/MySQL DATETIME stores UTC instants without timezone metadata.
+  const startOfDay = startOfLocalDayUtc(dateStr, tz);
+  const endOfDay = endOfLocalDayUtc(dateStr, tz);
 
   // 1. Fetch active medications for this profile
   const medications = await prisma.medication.findMany({
@@ -31,8 +33,8 @@ export async function ensureTodayDosesForProfile(profileId: string, referenceTim
 
   // 2. For each medication and scheduled time, ensure DoseLog exists
   for (const med of medications) {
-    for (const timeStr of med.times) {
-      const scheduledDateTime = new Date(`${dateStr}T${timeStr}:00.000Z`);
+    for (const timeStr of decodeMedicationTimes(med.times)) {
+      const scheduledDateTime = localDateTimeToUtc(dateStr, timeStr, tz);
 
       const existing = await prisma.doseLog.findFirst({
         where: {
@@ -56,7 +58,7 @@ export async function ensureTodayDosesForProfile(profileId: string, referenceTim
   }
 
   // 3. Return all doses for today
-  return prisma.doseLog.findMany({
+  const doses = await prisma.doseLog.findMany({
     where: {
       profileId,
       scheduledAt: {
@@ -73,6 +75,7 @@ export async function ensureTodayDosesForProfile(profileId: string, referenceTim
           instructions: true,
           stockCount: true,
           pillsPerDose: true,
+          times: true,
         },
       },
     },
@@ -80,5 +83,9 @@ export async function ensureTodayDosesForProfile(profileId: string, referenceTim
       scheduledAt: 'asc',
     },
   });
+  return doses.map((dose) => ({
+    ...dose,
+    medication: { ...dose.medication, times: decodeMedicationTimes(dose.medication.times) },
+  }));
 }
 

@@ -20,28 +20,18 @@ export default {
         'tap': '48px',
       },
       colors: {
-        // Kindred brand — high-contrast, warm
-        kindred: {
-          50:  '#fef7f0',
-          100: '#fdebd8',
-          200: '#fad4b0',
-          300: '#f7b47d',
-          400: '#f38b47',
-          500: '#ef6c24',
-          600: '#e05218',
-          700: '#ba3f15',
-          800: '#943419',
-          900: '#782d18',
+        // CareSync accessible teal brand
+        caresync: {
+          50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4',
+          400: '#2dd4bf', 500: '#14b8a6', 600: '#0f766e', 700: '#115e59',
+          800: '#134e4a', 900: '#042f2e',
         },
         surface: {
           DEFAULT: '#ffffff',
           dark: '#1a1a2e',
         },
       },
-      borderRadius: {
-        'xl': '1rem',
-        '2xl': '1.5rem',
-      },
+      borderRadius: { 'xl': 'var(--radius-card)', '2xl': '1.25rem' },
     },
   },
   plugins: [],

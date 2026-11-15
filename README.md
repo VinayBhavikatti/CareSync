@@ -1,159 +1,101 @@
-# Kindred 🏥❤️
-*(Repository: [CareSync](https://github.com/VinayBhavikatti/CareSync))*
+# CareSync
 
-> **Shared elder care and medication management platform with the elderly person at the center of their own healthcare decisions.**
+CareSync is a shared elder care and medication management platform. It helps an elder, their caretaker, and their family coordinate medication schedules, appointments, adherence, and reminders while keeping the elder in control of medicine changes.
 
----
+## The problem
 
-## 📌 The Problem
+Medication routines can be difficult to coordinate across a household. Caretakers need a way to help, elders need control over their care, and family members need visibility. CareSync gives each role clear permissions and keeps reminders reliable even when optional AI services are unavailable.
 
-Managing chronic conditions, medications, and clinic appointments is stressful and confusing for elderly individuals. Family members and caretakers want to assist, but often unintentionally take away the elder's agency or lack real-time visibility into whether crucial doses were taken. Traditional medication apps are either basic alarm clocks or complex portals that require passwords and treat elderly users as passive patients.
+## Features
 
-**Kindred** solves this by:
-1. **Keeping the elder in full control:** Caretakers can propose medications and updates, but they do **not** take effect on the daily schedule until the elder explicitly approves them.
-2. **Eliminating password friction:** Accessible, role-based passcodes (Elder, Caretaker, Family) without complicated email/password sign-up flows.
-3. **Closing the communication loop:** Automated background scheduling alerts the elder before a dose, sends a check-in alert if missed, escalates to family/caretakers after 60 minutes, and broadcasts an immediate "All Clear" notice once taken.
-4. **Accessible UX:** High-contrast design, minimum 18px typography, giant 48px+ tap targets, dark mode, and an unmistakable one-tap *"✓ I took it"* button.
+- Passcode sign-in with Elder, Caretaker, and read-only Family roles.
+- Medication schedules, stock tracking, dose logging, and elder approval for caretaker proposals.
+- Appointment tracking and a role-aware audit log of recorded changes.
+- Email reminders, missed-dose escalation, all-clear notices, and a simulated email log when SMTP is not configured.
+- Adherence insights, deterministic patterns, refill estimates, and a printable care summary.
+- Optional AI prescription photo extraction and a plain-language doctor summary. Extracted data always requires human review and confirmation.
+- Reviewed English, Hindi, and Kannada reminder templates.
+- Accessible high-contrast screens, keyboard focus indicators, large tap targets, and text alternatives for charts.
 
----
+**Reminders never depend on AI.** The scheduler uses fixed rules and reviewed message templates; an AI failure cannot block or delay a reminder.
 
-## ✨ Features Built So Far
+## Architecture
 
-- **Passcode Authentication & Rate-Limiting:**
-  - Dedicated bcrypt-hashed passcodes for 3 distinct roles:
-    - 👴 **Elder**: Full control; approves or declines proposed changes.
-    - 🧑‍⚕️ **Caretaker**: Can add medicines, schedule visits, and log doses (requires elder approval for prescription changes).
-    - 👨‍👩‍👧 **Family**: View-only transparency into adherence and schedules.
-  - 5-attempt rate-limiting with 15-minute lockout to safeguard households.
-  - 8-hour JWT sessions with automatic resume.
-- **Medication Schedule & Caretaker Approval Workflow:**
-  - Full CRUD with dosages, daily timings (24-hour format), and stock counts.
-  - Caretaker-submitted medications and edits are saved as `PENDING` and prominently displayed in an **"Awaiting Approval"** banner until reviewed by the elder.
-  - Elders can **Approve** or **Decline** with one click.
-- **One-Tap Dose Logging ("I took it"):**
-  - Today's schedule automatically generated for active medications in the elder's timezone.
-  - Giant green *"✓ I took it"* and *"Skip"* buttons with status indicated via both text/icon and color (`✅ TAKEN`, `⏳ DUE`, `⏭️ SKIPPED`, `⚠️ MISSED`).
-  - Marking a dose taken automatically decrements remaining pill stock in an atomic database transaction (undoing restores stock).
-- **Appointments Management:**
-  - Track doctor consultations, clinics, timings, and prep instructions.
-  - Shared visibility across elder, caretaker, and family.
-- **Automated Email Reminders & Escalation (`node-cron`):**
-  - **15 min before dose (`UPCOMING`)**: Friendly reminder emailed to the elder.
-  - **30 min after dose (`MISSED`)**: Alert emailed to elder checking if they took it.
-  - **60 min after dose (`ESCALATION`)**: Urgent escalation emailed to family & caretakers.
-  - **All-Clear Notice (`ALL CLEAR`)**: Immediate follow-up email to all parties once an overdue dose is taken.
-  - **Appointments**: Reminders sent 24 hours and 2 hours before visits.
-  - **Caretaker Proposals**: Elder is emailed whenever a caretaker submits a change for review.
-  - **Reliability & Idempotency**: `EmailLog` database constraint prevents duplicate emails; automatic retry with exponential backoff; 2-hour window catch-up on server restarts.
-  - **SMTP / Safe Simulation**: Works with any SMTP provider (Mailtrap, Resend) or runs in zero-setup simulation mode logging to console and DB.
-- **Demo Clock Fast-Forward (Judging Mode):**
-  - Elder-accessible time travel controls (`+15m`, `+30m`, `🚨 +60m Escalation`, `↺ Reset`) enabled when `DEMO_MODE=true` to demonstrate full multi-hour reminder cycles in under 2 minutes.
-- **Activity & Email Logs:**
-  - Tamper-proof audit trail of who did what and when.
-  - Searchable email notification history screen.
+- `client/`: React, Vite, TypeScript, Tailwind CSS, React Router.
+- `server/`: Node.js, Express, TypeScript, Prisma, Zod, JWT, bcrypt, Nodemailer, and node-cron.
+- MySQL is the application database. Prisma stores schedule times as JSON and stores date/time values as UTC instants in `DATETIME(3)` columns.
+- AI providers run on the server behind a provider interface. The Adaption Labs key is read from `server/.env` only.
 
----
+## Setup
 
-## 🛠️ Tech Stack
+Requirements: Node.js 18+, npm 9+, and MySQL 5.7.8+.
 
-- **Frontend:** React 18, Vite, Tailwind CSS, TypeScript, React Router 6
-- **Backend:** Node.js, Express, TypeScript, Prisma ORM
-- **Database:** PostgreSQL
-- **Scheduling:** `node-cron`
-- **Email:** Nodemailer (SMTP with fallback to database simulation log)
-- **Security:** bcrypt (12 rounds), JWT, Helmet, CORS, Zod validation
+1. Install dependencies:
 
----
+   ```bash
+   npm install
+   ```
 
-## 📋 Prerequisites
+2. Create the local database:
 
-- **Node.js** ≥ 18.0.0
-- **npm** ≥ 9.0.0
-- **PostgreSQL** running locally or a cloud database URL (Neon, Supabase, Railway)
+   ```sql
+   CREATE DATABASE kindred CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
 
----
+3. Copy `.env.example` to `server/.env` and set `DATABASE_URL`:
 
-## 🚀 Step-by-Step Setup
+   ```text
+   mysql://USER:PASSWORD@localhost:3306/kindred
+   ```
 
-### 1. Clone & Install
-```bash
-git clone https://github.com/VinayBhavikatti/CareSync.git
-cd CareSync
-npm install
-```
+   URL-encode reserved characters in the username or password (for example, `@` as `%40`, `:` as `%3A`, `/` as `%2F`, and `#` as `%23`). Keep secrets in `server/.env`, never in tracked files. Set a random `JWT_SECRET` of at least 32 characters. SMTP and AI credentials are optional.
 
-### 2. Configure Environment Variables
-Create the server environment file:
-```bash
-cp .env.example server/.env
-```
-Open `server/.env` and update:
-- `DATABASE_URL`: Your PostgreSQL connection string (e.g., `postgresql://postgres:password@localhost:5432/kindred`).
-- `JWT_SECRET`: Random string with at least 32 characters.
-- *(Optional)* SMTP settings (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`). If left empty, emails will log to the console and database.
+4. Push the Prisma schema and load demo data:
 
-Create the client environment file:
-```bash
-# In client/.env.local:
-VITE_API_URL=http://localhost:3001
-```
+   ```bash
+   npm run db:push
+   npm run db:seed
+   npm run db:seed:history
+   ```
 
-### 3. Initialize & Seed Database
-```bash
-# Push Prisma schema to PostgreSQL
-npm run db:push
+5. Start the client and server:
 
-# Populate demo profile, medications, and appointments
-npm run db:seed
-```
-*The seed command prints the generated Profile ID and test passcodes.*
+   ```bash
+   npm run dev
+   ```
 
-### 4. Run Development Servers
-```bash
-npm run dev
-```
-- **Frontend App:** http://localhost:5173
-- **Backend API:** http://localhost:3001
-- **Health Check:** http://localhost:3001/api/health
+   The client is at `http://localhost:5173`; the API is at `http://localhost:3001`.
 
----
+### Demo accounts
 
-## 🔑 Demo Credentials (from Seed)
+After seeding, use the Profile ID printed by the seed command and one of these demo-only passcodes:
 
-| Role | Access Level | Demo Passcode |
-|------|-------------|---------------|
-| 👴 **Elder** | Full control & change approval | `kindred-elder` |
-| 🧑‍⚕️ **Caretaker** | Propose medicines & log doses | `kindred-care` |
-| 👨‍👩‍👧 **Family** | Read-only updates | `kindred-fam` |
+| Role | Passcode | Access |
+|---|---|---|
+| Elder | `caresync-elder` | Full control and approval |
+| Caretaker | `caresync-care` | Add/edit and log doses; changes require elder approval |
+| Family | `caresync-fam` | Read-only |
 
-*(Use the **Profile ID** printed in the console during `npm run db:seed` on the login screen).*
+Enable the demo clock in `server/.env` with `DEMO_MODE=true` for the escalation walkthrough. It is disabled by default in `.env.example`.
 
----
+`npm run demo:reset` drops and recreates the configured database schema, then seeds the demo profile, medicines, appointment, and 30 days of history. **This clears all data in the configured database.**
 
-## 🧪 Running Tests
+## Tests and production build
 
 ```bash
-# Run unit tests (permission gates, timing rules, duplicate prevention)
 npm test
+npm run build
 ```
-*All 17 tests run in sub-second time without external dependencies.*
 
----
+The suite includes unit coverage for adherence, refill math, AI validation/fallbacks, permission middleware, MySQL-backed role permissions, the EmailLog duplicate constraint, schedule JSON round-tripping, and dose stock decrement/undo.
 
-## 🗺️ Planned Next Phases
+To check optional Adaption Labs access, set `ADAPTION_API_KEY` in `server/.env` and run `npm run ai:test`. The smoke test makes one small text request and one small image request.
 
-- **Phase 4 — Adherence Insights & Refill Predictor:**
-  - 7-day and 30-day percentage adherence calculations.
-  - Pattern detection (e.g., morning vs evening miss rates).
-  - Predictive pill exhaustion forecasts based on actual consumption rates.
-- **Phase 5 — Optional AI Enhancements (with Graceful Fallbacks):**
-  - Multimodal prescription label / photo reader to draft schedules (human confirmation always required).
-  - Plain-language and multilingual reminder message generation (English, Hindi, Kannada).
-  - Doctor visit summary generator.
-  - Credit-guarding with strict daily caps, caching, and template fallbacks.
+## Safety design
 
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+- AI output is a draft. A person reviews and confirms every extracted prescription field before anything is saved; caretaker changes still follow elder approval.
+- AI must only restate supplied data. It does not diagnose or provide dosage advice. The care summary keeps exact figures visible beside any generated paragraph.
+- No medical advice is provided by CareSync. Users should discuss care decisions with their clinician.
+- Reminder timing and delivery do not use AI.
+- The audit log records who changed what and when. Access is controlled by backend role middleware.
+- Secrets stay in environment files and are not logged. Prescription images are validated and processed without being retained.

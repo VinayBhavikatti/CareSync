@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const result = await authApi.verify(token);
         if (result.valid && result.profileId && result.role && result.elderName) {
-          setUser({ profileId: result.profileId, role: result.role, elderName: result.elderName, token });
+          setUser({ profileId: result.profileId, role: result.role, elderName: result.elderName, timezone: result.timezone ?? 'Asia/Kolkata', token });
         } else {
           localStorage.removeItem(TOKEN_KEY);
         }
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (profileId: string, role: Role, passcode: string) => {
     const result = await authApi.login(profileId, role, passcode);
     localStorage.setItem(TOKEN_KEY, result.token);
-    setUser({ profileId: result.profileId, role: result.role, elderName: result.elderName, token: result.token });
+    setUser({ profileId: result.profileId, role: result.role, elderName: result.elderName, timezone: result.timezone, token: result.token });
   }, []);
 
   const logout = useCallback(() => {

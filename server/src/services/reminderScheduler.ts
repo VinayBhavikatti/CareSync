@@ -2,6 +2,9 @@ import { PrismaClient, DoseStatus, EmailReminderType, AppointmentStatus } from '
 import { getCurrentTime } from '../utils/clock.js';
 import { ensureTodayDosesForProfile } from './doseGenerator.js';
 import { sendEmailWithDeduplication } from './emailService.js';
+import { checkAndSendRefillAlerts } from './insightsService.js';
+import { getReminderText } from '../notifications/translations.js';
+import { formatLocalDateTime, formatLocalTime } from '../utils/timezone.js';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +32,7 @@ export async function runReminderSchedulerTick(): Promise<void> {
     for (const profile of profiles) {
       try {
         await ensureTodayDosesForProfile(profile.id, now);
+        await checkAndSendRefillAlerts(profile.id);
       } catch (err) {
         console.error(`Failed to generate today's doses for profile ${profile.id}:`, err);
       }
@@ -65,14 +69,15 @@ export async function runReminderSchedulerTick(): Promise<void> {
       // OR within the catch-up window if server restarted and dose is still pending.
       if (dose.status === DoseStatus.PENDING && diffMinutes >= -15 && diffMinutes < 30) {
         if (dose.profile.elderEmail) {
+          const message = getReminderText('DOSE_UPCOMING', (dose.profile as any).language, { name: dose.profile.name, medicine: dose.medication.name, dosage: dose.medication.dosage, instructions: dose.medication.instructions ? `Instructions: ${dose.medication.instructions}` : '' });
           await sendEmailWithDeduplication({
             profileId: dose.profileId,
             entityId: dose.id,
             entityType: 'DoseLog',
             reminderType: EmailReminderType.DOSE_UPCOMING,
             recipient: dose.profile.elderEmail,
-            subject: `⏰ Upcoming dose: ${dose.medication.name} (${dose.medication.dosage})`,
-            body: `Hello ${dose.profile.name},\n\nIt is almost time for your scheduled medicine: ${dose.medication.name} (${dose.medication.dosage}).\n${dose.medication.instructions ? `Instructions: ${dose.medication.instructions}\n` : ''}\nPlease take it on time and mark "I took it" in your Kindred app.`,
+            subject: message.subject,
+            body: message.body,
           });
         }
       }
@@ -87,14 +92,15 @@ export async function runReminderSchedulerTick(): Promise<void> {
         });
 
         if (dose.profile.elderEmail) {
+          const message = getReminderText('DOSE_MISSED', (dose.profile as any).language, { name: dose.profile.name, medicine: dose.medication.name, dosage: dose.medication.dosage, time: formatTime(dose.scheduledAt, dose.profile.timezone) });
           await sendEmailWithDeduplication({
             profileId: dose.profileId,
             entityId: dose.id,
             entityType: 'DoseLog',
             reminderType: EmailReminderType.DOSE_MISSED,
             recipient: dose.profile.elderEmail,
-            subject: `⚠️ Missed medication alert: ${dose.medication.name}`,
-            body: `Hello ${dose.profile.name},\n\nYou missed your ${dose.medication.name} (${dose.medication.dosage}) scheduled for ${formatTime(dose.scheduledAt)}.\n\nIf you have already taken it, please open Kindred and tap "I took it" so your caretakers are aware.`,
+            subject: message.subject,
+            body: message.body,
           });
         }
       }
@@ -108,14 +114,15 @@ export async function runReminderSchedulerTick(): Promise<void> {
         ].filter((r) => Boolean(r.email));
 
         for (const recipient of escalationRecipients) {
+          const message = getReminderText('DOSE_ESCALATION', (dose.profile as any).language, { name: dose.profile.name, medicine: dose.medication.name, dosage: dose.medication.dosage, time: formatTime(dose.scheduledAt, dose.profile.timezone) });
           await sendEmailWithDeduplication({
             profileId: dose.profileId,
             entityId: dose.id,
             entityType: 'DoseLog',
             reminderType: EmailReminderType.DOSE_ESCALATION,
             recipient: recipient.email!,
-            subject: `🚨 Urgent: ${dose.profile.name} has not taken ${dose.medication.name}`,
-            body: `Kindred Escalation Notice:\n\n${dose.profile.name} was scheduled to take ${dose.medication.name} (${dose.medication.dosage}) over 1 hour ago (scheduled at ${formatTime(dose.scheduledAt)}), and it has not been marked as taken.\n\nPlease check in with them to make sure they are okay.`,
+            subject: message.subject,
+            body: message.body,
           });
         }
       }
@@ -147,14 +154,15 @@ export async function runReminderSchedulerTick(): Promise<void> {
       // Day before reminder (23h to 25h ahead)
       if (hoursUntil >= 23 && hoursUntil <= 25) {
         for (const email of allRecipients) {
+          const message = getReminderText('APPOINTMENT_DAY_BEFORE', (appt.profile as any).language, { name: appt.profile.name, appointment: appt.title, doctor: appt.doctorName || 'Not specified', location: appt.location || 'Not specified', time: formatLocalDateTime(appt.scheduledAt, appt.profile.timezone), notes: appt.notes ? `Notes: ${appt.notes}` : '' });
           await sendEmailWithDeduplication({
             profileId: appt.profileId,
             entityId: appt.id,
             entityType: 'Appointment',
             reminderType: EmailReminderType.APPOINTMENT_DAY_BEFORE,
             recipient: email,
-            subject: `📅 Tomorrow: Appointment with ${appt.doctorName || appt.title}`,
-            body: `Reminder: ${appt.profile.name} has an upcoming appointment tomorrow:\n\nTitle: ${appt.title}\nDoctor: ${appt.doctorName || 'Not specified'}\nLocation: ${appt.location || 'Not specified'}\nTime: ${appt.scheduledAt.toLocaleString()}\n${appt.notes ? `Notes: ${appt.notes}\n` : ''}`,
+            subject: message.subject,
+            body: message.body,
           });
         }
       }
@@ -162,14 +170,15 @@ export async function runReminderSchedulerTick(): Promise<void> {
       // 2 hours before reminder (1h 50m to 2h 10m ahead)
       if (hoursUntil >= 1.83 && hoursUntil <= 2.17) {
         for (const email of allRecipients) {
+          const message = getReminderText('APPOINTMENT_TWO_HOUR', (appt.profile as any).language, { name: appt.profile.name, appointment: appt.title, doctor: appt.doctorName || 'Not specified', location: appt.location || 'Not specified', time: formatTime(appt.scheduledAt, appt.profile.timezone) });
           await sendEmailWithDeduplication({
             profileId: appt.profileId,
             entityId: appt.id,
             entityType: 'Appointment',
             reminderType: EmailReminderType.APPOINTMENT_TWO_HOUR,
             recipient: email,
-            subject: `📅 In 2 hours: Appointment "${appt.title}"`,
-            body: `Reminder: ${appt.profile.name}'s appointment is coming up in about 2 hours at ${formatTime(appt.scheduledAt)}.\n\nLocation: ${appt.location || 'Not specified'}\nDoctor: ${appt.doctorName || 'Not specified'}`,
+            subject: message.subject,
+            body: message.body,
           });
         }
       }
@@ -205,14 +214,15 @@ export async function sendAllClearEmailsIfEligible(doseId: string): Promise<void
   }
 
   for (const esc of previousEscalations) {
+    const message = getReminderText('DOSE_ALL_CLEAR', (dose.profile as any).language, { name: dose.profile.name, medicine: dose.medication.name, dosage: dose.medication.dosage });
     await sendEmailWithDeduplication({
       profileId: dose.profileId,
       entityId: dose.id,
       entityType: 'DoseLog',
       reminderType: EmailReminderType.DOSE_ALL_CLEAR,
       recipient: esc.recipient,
-      subject: `✅ All Clear: ${dose.profile.name} took their ${dose.medication.name}`,
-      body: `All Clear Update:\n\n${dose.profile.name} has now taken their dose of ${dose.medication.name} (${dose.medication.dosage}) which was previously overdue.\n\nEverything is up to date!`,
+      subject: message.subject,
+      body: message.body,
     });
   }
 }
@@ -230,6 +240,7 @@ export async function sendProposalNeedsApprovalEmail(
   });
 
   if (!profile || !profile.elderEmail) return;
+  const message = getReminderText('PROPOSAL_NEEDS_APPROVAL', (profile as any).language, { name: profile.name, medicine: medicineName });
 
   await sendEmailWithDeduplication({
     profileId,
@@ -237,12 +248,12 @@ export async function sendProposalNeedsApprovalEmail(
     entityType: 'MedicationChangeProposal',
     reminderType: EmailReminderType.PROPOSAL_NEEDS_APPROVAL,
     recipient: profile.elderEmail,
-    subject: `🔔 Caretaker proposed medicine: ${medicineName} needs your approval`,
-    body: `Hello ${profile.name},\n\nYour caretaker has proposed adding or updating the medication "${medicineName}".\n\nBecause you are at the centre of your own healthcare, this change will not be added to your schedule until you approve it.\n\nPlease open your Kindred app and check the "Awaiting approval" banner on your Medicines screen.`,
+    subject: message.subject,
+    body: message.body,
   });
 }
 
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(d: Date, timeZone: string): string {
+  return formatLocalTime(d, timeZone);
 }
 

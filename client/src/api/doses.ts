@@ -19,6 +19,7 @@ export interface DoseItem {
     instructions: string | null;
     stockCount: number;
     pillsPerDose: number;
+    times: string[];
   };
 }
 

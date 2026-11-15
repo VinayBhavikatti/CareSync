@@ -1,12 +1,28 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { PrismaClient, Role, MedicationStatus, ProposalStatus, AuditActor } from '@prisma/client';
+import { PrismaClient, Prisma, Role, MedicationStatus, ProposalStatus, AuditActor } from '@prisma/client';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createAuditEntry } from '../services/auditService.js';
 import { sendProposalNeedsApprovalEmail } from '../services/reminderScheduler.js';
+import { decodeMedicationTimes, encodeMedicationTimes } from '../utils/medicationTimes.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+function medicationForApi(medication: any) {
+  return { ...medication, times: decodeMedicationTimes(medication.times as Prisma.JsonValue) };
+}
+
+function proposalForApi(proposal: any) {
+  const changes = proposal.proposedChanges as Record<string, unknown>;
+  return {
+    ...proposal,
+    medication: medicationForApi(proposal.medication),
+    proposedChanges: changes?.times
+      ? { ...changes, times: decodeMedicationTimes(changes.times as Prisma.JsonValue) }
+      : changes,
+  };
+}
 
 // Schema for adding or updating medication
 const medicationSchema = z.object({
@@ -56,9 +72,9 @@ router.get('/', async (req: Request, res: Response) => {
   ]);
 
   res.json({
-    active: activeMeds,
-    pendingNew: pendingMeds,
-    pendingChanges: pendingProposals,
+    active: activeMeds.map(medicationForApi),
+    pendingNew: pendingMeds.map(medicationForApi),
+    pendingChanges: pendingProposals.map(proposalForApi),
     canApprove: role === Role.ELDER,
     canEdit: role === Role.ELDER || role === Role.CARETAKER,
   });
@@ -87,7 +103,7 @@ router.post('/', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request, r
       name: data.name,
       dosage: data.dosage,
       instructions: data.instructions ?? null,
-      times: data.times,
+      times: encodeMedicationTimes(data.times),
       stockCount: data.stockCount,
       pillsPerDose: data.pillsPerDose,
       status,
@@ -114,7 +130,7 @@ router.post('/', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request, r
   }
 
   res.status(201).json({
-    medication,
+    medication: medicationForApi(medication),
     message: isElder
       ? 'Medication added successfully.'
       : 'Medication proposed! It will appear on the schedule once the elder approves it.',
@@ -152,8 +168,9 @@ router.put('/:id', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request,
         name: data.name,
         dosage: data.dosage,
         instructions: data.instructions ?? null,
-        times: data.times,
+        times: encodeMedicationTimes(data.times),
         stockCount: data.stockCount,
+        ...((data.stockCount > existing.stockCount) ? { refillCycle: ((existing as any).refillCycle ?? 0) + 1 } : {}),
         pillsPerDose: data.pillsPerDose,
         startDate: data.startDate ? new Date(data.startDate) : existing.startDate,
         endDate: data.endDate ? new Date(data.endDate) : existing.endDate,
@@ -170,7 +187,7 @@ router.put('/:id', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request,
       after: updated,
     });
 
-    res.json({ medication: updated, message: 'Medication updated successfully.' });
+    res.json({ medication: medicationForApi(updated), message: 'Medication updated successfully.' });
     return;
   }
 
@@ -179,7 +196,7 @@ router.put('/:id', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request,
     data: {
       profileId,
       medicationId: id,
-      proposedChanges: data,
+      proposedChanges: { ...data, times: encodeMedicationTimes(data.times) },
       status: ProposalStatus.PENDING,
     },
   });
@@ -199,7 +216,7 @@ router.put('/:id', requireRole(Role.ELDER, Role.CARETAKER), async (req: Request,
   );
 
   res.json({
-    proposal,
+    proposal: proposalForApi({ ...proposal, medication: existing }),
     message: 'Changes submitted for elder approval.',
   });
 });
@@ -263,8 +280,11 @@ router.post('/:id/approve', requireRole(Role.ELDER), async (req: Request, res: R
           name: changes.name ?? proposal.medication.name,
           dosage: changes.dosage ?? proposal.medication.dosage,
           instructions: changes.instructions !== undefined ? changes.instructions : proposal.medication.instructions,
-          times: changes.times ?? proposal.medication.times,
+          times: changes.times
+            ? encodeMedicationTimes(decodeMedicationTimes(changes.times))
+            : encodeMedicationTimes(decodeMedicationTimes(proposal.medication.times)),
           stockCount: changes.stockCount ?? proposal.medication.stockCount,
+          ...((changes.stockCount ?? proposal.medication.stockCount) > proposal.medication.stockCount ? { refillCycle: ((proposal.medication as any).refillCycle ?? 0) + 1 } : {}),
           pillsPerDose: changes.pillsPerDose ?? proposal.medication.pillsPerDose,
         },
       }),
@@ -284,7 +304,7 @@ router.post('/:id/approve', requireRole(Role.ELDER), async (req: Request, res: R
       after: updatedMed,
     });
 
-    res.json({ message: 'Changes approved and applied to medication.', medication: updatedMed });
+    res.json({ message: 'Changes approved and applied to medication.', medication: medicationForApi(updatedMed) });
     return;
   }
 
@@ -316,7 +336,7 @@ router.post('/:id/approve', requireRole(Role.ELDER), async (req: Request, res: R
     after: approvedMed,
   });
 
-  res.json({ message: 'Medication approved and added to your schedule.', medication: approvedMed });
+  res.json({ message: 'Medication approved and added to your schedule.', medication: medicationForApi(approvedMed) });
 });
 
 // ── POST /api/medications/:id/decline ────────────────────────────────────────

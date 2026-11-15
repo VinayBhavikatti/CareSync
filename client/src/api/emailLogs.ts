@@ -1,6 +1,6 @@
 import { apiFetch } from './client';
 
-export type EmailStatus = 'SENT' | 'FAILED';
+export type EmailStatus = 'SENT' | 'FAILED' | 'SIMULATED';
 
 export type EmailReminderType =
   | 'DOSE_UPCOMING'
@@ -9,7 +9,8 @@ export type EmailReminderType =
   | 'DOSE_ALL_CLEAR'
   | 'APPOINTMENT_DAY_BEFORE'
   | 'APPOINTMENT_TWO_HOUR'
-  | 'PROPOSAL_NEEDS_APPROVAL';
+  | 'PROPOSAL_NEEDS_APPROVAL'
+  | 'REFILL_WARNING';
 
 export interface EmailLogItem {
   id: string;

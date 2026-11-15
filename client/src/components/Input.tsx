@@ -14,7 +14,7 @@ export function Input({ label, error, hint, id, className = '', ...props }: Inpu
       <label htmlFor={inputId} className="text-lg font-semibold text-gray-800 dark:text-gray-100">
         {label}
       </label>
-      {hint && <p className="text-base text-gray-500 dark:text-gray-400">{hint}</p>}
+      {hint && <p className="text-lg text-muted">{hint}</p>}
       <input
         id={inputId}
         className={`input-field ${error ? 'border-red-500 dark:border-red-500' : ''} ${className}`}

@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../app.js';
 import { signToken } from '../utils/jwt.js';
-import { PrismaClient, Role, MedicationStatus } from '@prisma/client';
+import { PrismaClient, Role, MedicationStatus, EmailReminderType, EmailStatus } from '@prisma/client';
 import type { Server } from 'http';
+import { addLocalDays, localDateKey, localDateTimeToUtc } from '../utils/timezone.js';
 
 const prisma = new PrismaClient();
 const app = createApp();
@@ -75,7 +76,11 @@ test('Permission Rules Test Suite', async (t) => {
     const body = (await res.json()) as any;
     assert.equal(body.medication.status, MedicationStatus.PENDING_APPROVAL);
     assert.equal(body.medication.name, 'Atorvastatin');
+    assert.deepEqual(body.medication.times, ['21:00']);
     createdMedId = body.medication.id;
+
+    const storedMedication = await prisma.medication.findUniqueOrThrow({ where: { id: createdMedId } });
+    assert.deepEqual(storedMedication.times, ['21:00']);
   });
 
   await t.test('2. Caretaker CANNOT approve pending medication (Forbidden 403)', async () => {
@@ -142,6 +147,20 @@ test('Permission Rules Test Suite', async (t) => {
     assert.equal(body.medication.status, MedicationStatus.ACTIVE);
   });
 
+  await t.test('5b. Appointment local input instant is stored as UTC in MySQL', async () => {
+    const dateKey = addLocalDays(localDateKey(new Date(), 'Asia/Kolkata'), 1);
+    const expectedUtc = localDateTimeToUtc(dateKey, '11:15', 'Asia/Kolkata');
+    const response = await fetch(`${baseUrl}/api/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${elderToken}` },
+      body: JSON.stringify({ title: 'Timezone test visit', scheduledAt: expectedUtc.toISOString() }),
+    });
+    assert.equal(response.status, 201);
+    const body = (await response.json()) as any;
+    const stored = await prisma.appointment.findUniqueOrThrow({ where: { id: body.appointment.id } });
+    assert.equal(stored.scheduledAt.toISOString(), expectedUtc.toISOString());
+  });
+
   await t.test('6. Dose logging: Elder marks dose TAKEN, stock decrements by pillsPerDose', async () => {
     // 1. Get today's doses
     const getRes = await fetch(`${baseUrl}/api/doses/today`, {
@@ -151,6 +170,7 @@ test('Permission Rules Test Suite', async (t) => {
     const getBody = (await getRes.json()) as any;
     const dose = getBody.doses.find((d: any) => d.medicationId === createdMedId);
     assert.ok(dose, 'Dose should exist for today');
+    assert.equal(dose.scheduledAt, localDateTimeToUtc(getBody.date, '21:00', 'Asia/Kolkata').toISOString());
 
     // 2. Mark TAKEN
     const postRes = await fetch(`${baseUrl}/api/doses/${dose.id}/status`, {
@@ -166,6 +186,49 @@ test('Permission Rules Test Suite', async (t) => {
     const postBody = (await postRes.json()) as any;
     assert.equal(postBody.dose.status, 'TAKEN');
     assert.equal(postBody.remainingStock, 29); // 30 - 1 = 29
+  });
+
+  await t.test('6b. Undoing TAKEN restores stock and schedule JSON is returned', async () => {
+    const getRes = await fetch(`${baseUrl}/api/doses/today`, {
+      headers: { Authorization: `Bearer ${elderToken}` },
+    });
+    const getBody = (await getRes.json()) as any;
+    const dose = getBody.doses.find((d: any) => d.medicationId === createdMedId);
+
+    const postRes = await fetch(`${baseUrl}/api/doses/${dose.id}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${elderToken}`,
+      },
+      body: JSON.stringify({ status: 'PENDING' }),
+    });
+
+    assert.equal(postRes.status, 200);
+    const postBody = (await postRes.json()) as any;
+    assert.equal(postBody.dose.status, 'PENDING');
+    assert.equal(postBody.remainingStock, 30);
+    assert.deepEqual(postBody.dose.medication.times, ['21:00']);
+  });
+
+  await t.test('6c. EmailLog composite unique constraint blocks a duplicate', async () => {
+    const entry = {
+      profileId: testProfileId,
+      entityId: createdMedId,
+      entityType: 'Medication',
+      reminderType: EmailReminderType.DOSE_UPCOMING,
+      recipient: 'constraint-test@example.invalid',
+      subject: 'Constraint verification',
+      body: 'Temporary database integration check.',
+      status: EmailStatus.SIMULATED,
+      sentAt: new Date('2026-11-15T02:30:00.000Z'),
+    };
+    const created = await prisma.emailLog.create({ data: entry });
+    assert.equal(created.sentAt.toISOString(), '2026-11-15T02:30:00.000Z');
+    await assert.rejects(
+      prisma.emailLog.create({ data: entry }),
+      (error: any) => error?.code === 'P2002',
+    );
   });
 
   await t.test('7. Family role CANNOT mark dose status (Forbidden 403)', async () => {

@@ -1,5 +1,5 @@
 {
-  "name": "kindred",
+  "name": "caresync",
   "version": "1.0.0",
   "description": "Shared elder care and medication management platform",
   "private": true,
@@ -13,7 +13,10 @@
     "test": "npm run test --workspace=server",
     "db:push": "npm run db:push --workspace=server",
     "db:seed": "npm run db:seed --workspace=server",
-    "db:studio": "npm run db:studio --workspace=server"
+    "db:seed:history": "npm run db:seed:history --workspace=server",
+    "demo:reset": "npm run demo:reset --workspace=server",
+    "db:studio": "npm run db:studio --workspace=server",
+    "ai:test": "npm run ai:test --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

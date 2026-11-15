@@ -91,7 +91,7 @@ test('Reminder Timing & Duplicate Prevention Test Suite', async (t) => {
     const simulator = new DeduplicationSimulator();
     const entityId = 'dose-uuid-1234';
     const reminderType = 'DOSE_UPCOMING';
-    const recipient = 'elder@demo.kindred';
+    const recipient = 'elder@demo.caresync';
 
     const firstTry = simulator.send(entityId, reminderType, recipient);
     assert.equal(firstTry, true, 'First send attempt must succeed');
@@ -105,7 +105,7 @@ test('Reminder Timing & Duplicate Prevention Test Suite', async (t) => {
   await t.test('8. Deduplication: Different reminder type for same dose is permitted', () => {
     const simulator = new DeduplicationSimulator();
     const entityId = 'dose-uuid-1234';
-    const recipient = 'elder@demo.kindred';
+    const recipient = 'elder@demo.caresync';
 
     const upcoming = simulator.send(entityId, 'DOSE_UPCOMING', recipient);
     assert.equal(upcoming, true);

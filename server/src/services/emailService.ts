@@ -22,7 +22,7 @@ const transporter = isSmtpConfigured
 interface SendEmailParams {
   profileId: string;
   entityId: string;
-  entityType: 'DoseLog' | 'Appointment' | 'MedicationChangeProposal';
+  entityType: 'DoseLog' | 'Appointment' | 'MedicationChangeProposal' | 'Medication';
   reminderType: EmailReminderType;
   recipient: string;
   subject: string;
@@ -40,7 +40,7 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
     return false;
   }
 
-  // 1. Deduplication check: Has this exact reminder already been sent for this entity to this recipient?
+  // 1. Deduplication check: Has this exact reminder already been sent/simulated for this entity to this recipient?
   const existingSent = await prisma.emailLog.findUnique({
     where: {
       entityId_reminderType_recipient: {
@@ -51,8 +51,11 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
     },
   });
 
-  if (existingSent && existingSent.status === EmailStatus.SENT) {
-    // Already sent! Prevent duplicate.
+  if (
+    existingSent &&
+    (existingSent.status === EmailStatus.SENT || existingSent.status === EmailStatus.SIMULATED)
+  ) {
+    // Already sent/simulated! Prevent duplicate.
     return false;
   }
 
@@ -61,6 +64,7 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
   let attempt = 0;
   let lastError: string | null = null;
   let success = false;
+  const targetStatus = isSmtpConfigured ? EmailStatus.SENT : EmailStatus.SIMULATED;
 
   while (attempt < MAX_RETRIES && !success) {
     attempt++;
@@ -74,14 +78,14 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 18px; line-height: 1.6; color: #1f2937; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 16px;">
               <div style="font-size: 24px; font-weight: bold; color: #ef6c24; margin-bottom: 16px;">
-                ❤️ Kindred Care
+                ❤️ CareSync Care
               </div>
               <div style="white-space: pre-line; margin-bottom: 24px;">
                 ${body}
               </div>
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
               <p style="font-size: 14px; color: #6b7280; margin: 0;">
-                Kindred — Shared elder care & medication management.
+                CareSync — Shared elder care & medication management.
               </p>
             </div>
           `,
@@ -116,7 +120,7 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
         },
       },
       update: {
-        status: success ? EmailStatus.SENT : EmailStatus.FAILED,
+        status: success ? targetStatus : EmailStatus.FAILED,
         error: lastError,
         retryCount: attempt,
         sentAt: new Date(),
@@ -129,9 +133,10 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
         recipient,
         subject,
         body,
-        status: success ? EmailStatus.SENT : EmailStatus.FAILED,
+        status: success ? targetStatus : EmailStatus.FAILED,
         error: lastError,
         retryCount: attempt,
+        sentAt: new Date(),
       },
     });
   } catch (err) {

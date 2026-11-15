@@ -4,30 +4,32 @@
  * Run: npm run db:seed --workspace=server
  *
  * Demo passcodes (printed to console after seeding):
- *   Elder:     kindred-elder
- *   Caretaker: kindred-care
- *   Family:    kindred-fam
+ *   Elder:     caresync-elder
+ *   Caretaker: caresync-care
+ *   Family:    caresync-fam
  */
 
 import { PrismaClient, AuditActor } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
+import { encodeMedicationTimes } from '../src/utils/medicationTimes.js';
+import { addLocalDays, localDateKey, localDateTimeToUtc } from '../src/utils/timezone.js';
 
 dotenv.config();
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding Kindred database...\n');
+  console.log('🌱 Seeding CareSync database...\n');
 
   // Clean up existing demo data
   await prisma.careProfile.deleteMany({ where: { name: 'Ramesh Kumar (Demo)' } });
 
   const SALT_ROUNDS = 12;
   const [elderHash, caretakerHash, familyHash] = await Promise.all([
-    bcrypt.hash('kindred-elder', SALT_ROUNDS),
-    bcrypt.hash('kindred-care', SALT_ROUNDS),
-    bcrypt.hash('kindred-fam', SALT_ROUNDS),
+    bcrypt.hash('caresync-elder', SALT_ROUNDS),
+    bcrypt.hash('caresync-care', SALT_ROUNDS),
+    bcrypt.hash('caresync-fam', SALT_ROUNDS),
   ]);
 
   // ── Care profile ───────────────────────────────────────────────────────────
@@ -37,9 +39,9 @@ async function main() {
       elderPasscodeHash: elderHash,
       caretakerPasscodeHash: caretakerHash,
       familyPasscodeHash: familyHash,
-      elderEmail: 'elder@demo.kindred',
-      caretakerEmail: 'caretaker@demo.kindred',
-      familyEmail: 'family@demo.kindred',
+      elderEmail: 'elder@demo.caresync',
+      caretakerEmail: 'caretaker@demo.caresync',
+      familyEmail: 'family@demo.caresync',
       timezone: 'Asia/Kolkata',
     },
   });
@@ -51,7 +53,7 @@ async function main() {
       name: 'Metformin',
       dosage: '500mg',
       instructions: 'Take with food. Do not crush or chew.',
-      times: ['08:00', '20:00'],
+      times: encodeMedicationTimes(['08:00', '20:00']),
       stockCount: 60,
       pillsPerDose: 1,
       status: 'ACTIVE',
@@ -66,7 +68,7 @@ async function main() {
       name: 'Amlodipine',
       dosage: '5mg',
       instructions: 'Take at the same time each day. Ask your doctor about grapefruit.',
-      times: ['09:00'],
+      times: encodeMedicationTimes(['09:00']),
       stockCount: 30,
       pillsPerDose: 1,
       status: 'ACTIVE',
@@ -81,7 +83,7 @@ async function main() {
       name: 'Vitamin D3',
       dosage: '1000 IU',
       instructions: 'Take with a meal that contains fat for best absorption.',
-      times: ['13:00'],
+      times: encodeMedicationTimes(['13:00']),
       stockCount: 90,
       pillsPerDose: 1,
       status: 'ACTIVE',
@@ -91,9 +93,7 @@ async function main() {
   });
 
   // ── Appointment ────────────────────────────────────────────────────────────
-  const appointmentDate = new Date();
-  appointmentDate.setDate(appointmentDate.getDate() + 3); // 3 days from now
-  appointmentDate.setHours(10, 30, 0, 0);
+  const appointmentDate = localDateTimeToUtc(addLocalDays(localDateKey(new Date(), profile.timezone), 3), '10:30', profile.timezone);
 
   await prisma.appointment.create({
     data: {
@@ -151,9 +151,9 @@ async function main() {
   console.log('  DEMO LOGIN CREDENTIALS');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`  Profile ID : ${profile.id}`);
-  console.log('  Elder      : kindred-elder');
-  console.log('  Caretaker  : kindred-care');
-  console.log('  Family     : kindred-fam');
+  console.log('  Elder      : caresync-elder');
+  console.log('  Caretaker  : caresync-care');
+  console.log('  Family     : caresync-fam');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }
 

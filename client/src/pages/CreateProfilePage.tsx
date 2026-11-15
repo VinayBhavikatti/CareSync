@@ -1,181 +1,60 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { Check, Copy, UsersRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { BrandMark } from '../components/BrandMark';
+import { Card } from '../components/Card';
 import { authApi } from '../api/auth';
 
 export function CreateProfilePage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    name: '',
-    elderPasscode: '',
-    caretakerPasscode: '',
-    familyPasscode: '',
-    elderEmail: '',
-    caretakerEmail: '',
-    familyEmail: '',
-  });
+  const [form, setForm] = useState({ name: '', elderPasscode: '', caretakerPasscode: '', familyPasscode: '', elderEmail: '', caretakerEmail: '', familyEmail: '' });
   const [error, setError] = useState('');
   const [createdId, setCreatedId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  const update = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!form.name.trim()) { setError('Please enter the elder\'s name.'); return; }
-    if (!form.elderPasscode) { setError('Please set a passcode for the elder.'); return; }
-    if (!form.caretakerPasscode) { setError('Please set a passcode for the caretaker.'); return; }
-    if (!form.familyPasscode) { setError('Please set a passcode for family members.'); return; }
-
+  const update = (field: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm((previous) => ({ ...previous, [field]: event.target.value }));
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault(); setError('');
+    if (!form.name.trim()) { setError('Please enter the elder’s name.'); return; }
+    if (!form.elderPasscode || !form.caretakerPasscode || !form.familyPasscode) { setError('Set a passcode for the elder, caretaker, and family.'); return; }
     setIsLoading(true);
-    try {
-      const result = await authApi.createProfile(form);
-      setCreatedId(result.profileId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create profile. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    try { const result = await authApi.createProfile(form); setCreatedId(result.profileId); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not create the profile. Please try again.'); }
+    finally { setIsLoading(false); }
   };
+  const copyId = async () => { await navigator.clipboard.writeText(createdId); setCopied(true); window.setTimeout(() => setCopied(false), 2000); };
 
-  const copyId = async () => {
-    await navigator.clipboard.writeText(createdId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (createdId) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-kindred-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg">
-          <div className="card shadow-lg text-center">
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Profile Created!</h2>
-            <p className="text-lg text-gray-600 dark:text-gray-300 mb-6">
-              Save this Profile ID — everyone will need it to sign in.
-            </p>
-
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 mb-4 font-mono text-lg break-all text-left">
-              {createdId}
-            </div>
-
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={copyId}
-              className="mb-4"
-            >
-              {copied ? '✓ Copied!' : '📋 Copy Profile ID'}
-            </Button>
-
-            <Button fullWidth onClick={() => navigate('/')}>
-              Go to Sign In
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-kindred-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 flex items-start justify-center p-4 py-8">
-      <div className="w-full max-w-lg">
-
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-kindred-600 rounded-2xl mb-3 shadow-lg">
-            <span className="text-3xl">❤️</span>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Kindred</h1>
-          <p className="text-lg text-gray-500 dark:text-gray-400">Create a care profile</p>
-        </div>
-
-        <div className="card shadow-lg">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
-
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">About the elder</h2>
-              <p className="text-base text-gray-500 dark:text-gray-400">The elder is at the centre of this profile.</p>
-            </div>
-
-            <Input
-              label="Elder's Full Name"
-              type="text"
-              value={form.name}
-              onChange={update('name')}
-              placeholder="e.g. Ramesh Kumar"
-              autoComplete="name"
-            />
-
-            <hr className="border-gray-200 dark:border-gray-700" />
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Set Passcodes</h2>
-              <p className="text-base text-gray-500 dark:text-gray-400">Share each passcode only with the right person. Use at least 4 characters.</p>
-            </div>
-
-            <Input
-              label="👴 Elder Passcode"
-              hint="Only for the elder"
-              type="password"
-              value={form.elderPasscode}
-              onChange={update('elderPasscode')}
-              placeholder="Minimum 4 characters"
-              autoComplete="new-password"
-            />
-
-            <Input
-              label="🧑‍⚕️ Caretaker Passcode"
-              hint="For nurses or home helpers"
-              type="password"
-              value={form.caretakerPasscode}
-              onChange={update('caretakerPasscode')}
-              placeholder="Minimum 4 characters"
-              autoComplete="new-password"
-            />
-
-            <Input
-              label="👨‍👩‍👧 Family Passcode"
-              hint="For family members (view only)"
-              type="password"
-              value={form.familyPasscode}
-              onChange={update('familyPasscode')}
-              placeholder="Minimum 4 characters"
-              autoComplete="new-password"
-            />
-
-            <hr className="border-gray-200 dark:border-gray-700" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Email Addresses <span className="text-base font-normal text-gray-400">(optional)</span></h2>
-              <p className="text-base text-gray-500 dark:text-gray-400">Used for medication and appointment reminders.</p>
-            </div>
-
-            <Input label="Elder's Email" type="email" value={form.elderEmail} onChange={update('elderEmail')} placeholder="elder@example.com" autoComplete="email" />
-            <Input label="Caretaker's Email" type="email" value={form.caretakerEmail} onChange={update('caretakerEmail')} placeholder="caretaker@example.com" autoComplete="email" />
-            <Input label="Family Email" type="email" value={form.familyEmail} onChange={update('familyEmail')} placeholder="family@example.com" autoComplete="email" />
-
-            {error && (
-              <div className="error-box" role="alert" aria-live="polite">
-                <strong>⚠️ </strong>{error}
-              </div>
-            )}
-
-            <Button type="submit" fullWidth size="lg" isLoading={isLoading}>
-              Create Profile
-            </Button>
-
-            <div className="text-center">
-              <Link to="/" className="text-kindred-600 dark:text-kindred-400 text-lg font-semibold hover:underline">
-                ← Back to Sign In
-              </Link>
-            </div>
-          </form>
-        </div>
-      </div>
+  return <main className="flex min-h-screen items-center justify-center px-4 py-8" style={{ background: 'var(--page)' }}>
+    <div className="w-full max-w-2xl">
+      <div className="mb-6 flex flex-col items-center text-center"><BrandMark size={56} className="mb-3 text-caresync-700 dark:text-caresync-400" /><h1 className="text-3xl font-bold">CareSync</h1><p className="mt-1 text-lg text-muted">Create a shared care profile</p></div>
+      {createdId ? <Card className="text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"><Check size={30} aria-hidden="true" /></div>
+        <h2 className="text-3xl font-bold">Profile created</h2>
+        <p className="mt-2 text-lg text-muted">Save this Profile ID. Everyone in the care profile will need it to sign in.</p>
+        <div className="mt-5 break-all rounded-xl surface-subtle p-4 text-left font-mono text-lg">{createdId}</div>
+        <Button variant="secondary" fullWidth className="mt-4" onClick={() => void copyId()}>{copied ? <><Check size={20} aria-hidden="true" /> Copied</> : <><Copy size={20} aria-hidden="true" /> Copy Profile ID</>}</Button>
+        <Button fullWidth className="mt-3" onClick={() => navigate('/')}>Go to sign in</Button>
+      </Card> : <Card>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+          <div><h2 className="flex items-center gap-2 text-2xl font-bold"><UsersRound aria-hidden="true" /> About the elder</h2><p className="mt-1 text-lg text-muted">The elder remains at the centre of this profile.</p></div>
+          <Input label="Elder’s full name" type="text" value={form.name} onChange={update('name')} placeholder="e.g. Ramesh Kumar" autoComplete="name" />
+          <hr className="border-token" />
+          <div><h2 className="text-2xl font-bold">Set passcodes</h2><p className="mt-1 text-lg text-muted">Share each passcode only with the right person. Use at least 4 characters.</p></div>
+          <Input label="Elder passcode" hint="For the elder" type="password" value={form.elderPasscode} onChange={update('elderPasscode')} placeholder="Minimum 4 characters" autoComplete="new-password" />
+          <Input label="Caretaker passcode" hint="For nurses or home helpers" type="password" value={form.caretakerPasscode} onChange={update('caretakerPasscode')} placeholder="Minimum 4 characters" autoComplete="new-password" />
+          <Input label="Family passcode" hint="For family members (view only)" type="password" value={form.familyPasscode} onChange={update('familyPasscode')} placeholder="Minimum 4 characters" autoComplete="new-password" />
+          <hr className="border-token" />
+          <div><h2 className="text-2xl font-bold">Email addresses <span className="text-lg font-normal text-muted">(optional)</span></h2><p className="mt-1 text-lg text-muted">Used for medicine and appointment reminders.</p></div>
+          <Input label="Elder’s email" type="email" value={form.elderEmail} onChange={update('elderEmail')} placeholder="elder@example.com" autoComplete="email" />
+          <Input label="Caretaker’s email" type="email" value={form.caretakerEmail} onChange={update('caretakerEmail')} placeholder="caretaker@example.com" autoComplete="email" />
+          <Input label="Family email" type="email" value={form.familyEmail} onChange={update('familyEmail')} placeholder="family@example.com" autoComplete="email" />
+          {error && <div className="error-box" role="alert" aria-live="polite">{error}</div>}
+          <Button type="submit" fullWidth size="lg" isLoading={isLoading}>Create profile</Button>
+          <p className="text-center text-lg text-muted">Already have a profile? <Link to="/" className="font-semibold text-caresync-900 underline-offset-4 hover:underline dark:text-caresync-100">Sign in</Link></p>
+        </form>
+      </Card>}
     </div>
-  );
+  </main>;
 }
-

@@ -8,8 +8,13 @@ import { MedicinesPage } from './pages/MedicinesPage';
 import { AppointmentsPage } from './pages/AppointmentsPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { EmailLogPage } from './pages/EmailLogPage';
+import { SummaryPage } from './pages/SummaryPage';
+import { PreferencesPage } from './pages/PreferencesPage';
 import { Navbar } from './components/Navbar';
 import { DemoClockControl } from './components/DemoClockControl';
+import { BrandMark } from './components/BrandMark';
+
+const InsightsPage = React.lazy(() => import('./pages/InsightsPage').then((module) => ({ default: module.InsightsPage })));
 
 /** Redirect to /today if already logged in, otherwise show the public page */
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -28,25 +33,21 @@ function PrivateLayout({ children }: { children: React.ReactNode }) {
   if (!user) return <Navigate to="/" replace />;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col">
-      <DemoClockControl />
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <Navbar />
-      <main className="flex-1 pb-16">{children}</main>
+      <div className="app-main-column lg:ml-72">
+        <DemoClockControl />
+        <main id="main-content" tabIndex={-1} className="page-content">{children}</main>
+      </div>
     </div>
   );
 }
 
 function LoadingScreen() {
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-20 h-20 bg-kindred-600 rounded-3xl mb-4 animate-pulse">
-          <span className="text-4xl">❤️</span>
-        </div>
-        <p className="text-xl text-gray-500 dark:text-gray-400">Loading Kindred…</p>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--page)' }}>
+    <div className="text-center"><BrandMark size={56} className="mx-auto mb-4 text-caresync-700 dark:text-caresync-300" /><p className="text-xl text-muted">Loading CareSync...</p></div>
+  </div>;
 }
 
 function AppRoutes() {
@@ -106,6 +107,9 @@ function AppRoutes() {
           </PrivateLayout>
         }
       />
+      <Route path="/insights" element={<PrivateLayout><React.Suspense fallback={<LoadingScreen />}><InsightsPage /></React.Suspense></PrivateLayout>} />
+      <Route path="/summary" element={<PrivateLayout><SummaryPage /></PrivateLayout>} />
+      <Route path="/preferences" element={<PrivateLayout><PreferencesPage /></PrivateLayout>} />
       <Route
         path="/activity"
         element={
@@ -121,13 +125,9 @@ function AppRoutes() {
 }
 
 export default function App() {
-  // Sync dark mode with system preference
+  // Light is the default; respect an explicit saved theme preference.
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = (dark: boolean) =>
-      document.documentElement.classList.toggle('dark', dark);
-    apply(mq.matches);
-    mq.addEventListener('change', (e) => apply(e.matches));
+    document.documentElement.classList.toggle('dark', localStorage.getItem('caresync_theme') === 'dark');
   }, []);
 
   return (
