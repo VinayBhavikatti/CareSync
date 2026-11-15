@@ -1,0 +1,205 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ELDER
+  CARETAKER
+  FAMILY
+}
+
+enum MedicationStatus {
+  ACTIVE
+  PENDING_APPROVAL
+  ARCHIVED
+}
+
+enum DoseStatus {
+  PENDING
+  TAKEN
+  SKIPPED
+  MISSED
+}
+
+enum AppointmentStatus {
+  UPCOMING
+  COMPLETED
+  CANCELLED
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+enum AuditActor {
+  ELDER
+  CARETAKER
+  FAMILY
+  SYSTEM
+}
+
+enum EmailStatus {
+  SENT
+  FAILED
+}
+
+enum EmailReminderType {
+  DOSE_UPCOMING
+  DOSE_MISSED
+  DOSE_ESCALATION
+  DOSE_ALL_CLEAR
+  APPOINTMENT_DAY_BEFORE
+  APPOINTMENT_TWO_HOUR
+  PROPOSAL_NEEDS_APPROVAL
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model CareProfile {
+  id                    String   @id @default(uuid())
+  name                  String
+  elderPasscodeHash     String
+  caretakerPasscodeHash String
+  familyPasscodeHash    String
+  elderEmail            String?
+  caretakerEmail        String?
+  familyEmail           String?
+  timezone              String   @default("Asia/Kolkata")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  medications       Medication[]
+  appointments      Appointment[]
+  doseLogs          DoseLog[]
+  auditLogs         AuditLog[]
+  rateLimitAttempts RateLimitAttempt[]
+  proposals         MedicationChangeProposal[]
+  emailLogs         EmailLog[]
+}
+
+model Medication {
+  id           String           @id @default(uuid())
+  profileId    String
+  name         String
+  dosage       String
+  instructions String?
+  times        String[]         // e.g. ["08:00", "20:00"] in 24h local time
+  stockCount   Int
+  pillsPerDose Int              @default(1)
+  status       MedicationStatus @default(ACTIVE)
+  proposedBy   Role             @default(ELDER)
+  approvedAt   DateTime?
+  startDate    DateTime         @default(now())
+  endDate      DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  profile   CareProfile                @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  doseLogs  DoseLog[]
+  proposals MedicationChangeProposal[]
+}
+
+model MedicationChangeProposal {
+  id               String         @id @default(uuid())
+  medicationId     String
+  profileId        String
+  proposedChanges  Json
+  status           ProposalStatus @default(PENDING)
+  decidedAt        DateTime?
+  createdAt        DateTime       @default(now())
+
+  medication Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  profile    CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model DoseLog {
+  id               String     @id @default(uuid())
+  medicationId     String
+  profileId        String
+  scheduledAt      DateTime
+  status           DoseStatus @default(PENDING)
+  loggedAt         DateTime?
+  loggedBy         Role?
+  note             String?
+  reminderSentAt   DateTime?
+  escalationSentAt DateTime?
+
+  medication Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  profile    CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id                    String            @id @default(uuid())
+  profileId             String
+  title                 String
+  doctorName            String?
+  location              String?
+  scheduledAt           DateTime
+  notes                 String?
+  status                AppointmentStatus @default(UPCOMING)
+  dayBeforeReminderSent Boolean           @default(false)
+  twoHourReminderSent   Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  profile CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String     @id @default(uuid())
+  profileId  String
+  actor      AuditActor
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime   @default(now())
+
+  profile CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model RateLimitAttempt {
+  id          String   @id @default(uuid())
+  profileId   String
+  role        Role
+  ipAddress   String
+  attemptedAt DateTime @default(now())
+
+  profile CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, role, attemptedAt])
+}
+
+model EmailLog {
+  id           String            @id @default(uuid())
+  profileId    String
+  entityId     String
+  entityType   String
+  reminderType EmailReminderType
+  recipient    String
+  subject      String
+  body         String
+  status       EmailStatus
+  error        String?
+  retryCount   Int               @default(0)
+  sentAt       DateTime          @default(now())
+
+  profile CareProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, reminderType, recipient])
+  @@index([profileId, sentAt])
+}
+
