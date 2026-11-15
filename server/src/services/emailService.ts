@@ -91,17 +91,12 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
           `,
         });
       } else {
-        // Fallback: simulated send to console
-        console.log(`\n📧 [EMAIL SIMULATION — SMTP not configured]`);
-        console.log(`  To: ${recipient}`);
-        console.log(`  Subject: ${subject}`);
-        console.log(`  Type: ${reminderType}`);
-        console.log(`  Body:\n${body}\n`);
+        // Simulated delivery is recorded below; never write recipient or message data to logs.
       }
       success = true;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      console.error(`Email send attempt ${attempt} failed for ${recipient}:`, lastError);
+      console.error(`Email send attempt ${attempt} failed.`);
       if (attempt < MAX_RETRIES) {
         // Exponential backoff: 300ms, 600ms
         await new Promise((resolve) => setTimeout(resolve, 300 * Math.pow(2, attempt - 1)));
@@ -139,8 +134,8 @@ export async function sendEmailWithDeduplication(params: SendEmailParams): Promi
         sentAt: new Date(),
       },
     });
-  } catch (err) {
-    console.error('Failed to write EmailLog record:', err);
+  } catch {
+    console.error('Failed to write EmailLog record.');
   }
 
   return success;
